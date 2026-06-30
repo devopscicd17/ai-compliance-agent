@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Cross-account IAM role for the Agentic AWS Compliance Agent.
+  Deploy this stack in EVERY target account you want the agent to scan,
+  trusting the account where the agent itself runs (the "hub" account).
+
+Parameters:
+  HubAccountId:
+    Type: String
+    Description: AWS Account ID where the Compliance Agent runs (ECS/Lambda/K8s)
+  RoleName:
+    Type: String
+    Default: ComplianceAgentRole
+  ExternalId:
+    Type: String
+    Description: Optional external ID for additional cross-account assume-role security
+    Default: ""
+
+Conditions:
+  HasExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+
+Resources:
+  ComplianceAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${HubAccountId}:root"
+            Action: sts:AssumeRole
+            Condition:
+              !If
+                - HasExternalId
+                - { StringEquals: { "sts:ExternalId": !Ref ExternalId } }
+                - !Ref AWS::NoValue
+      MaxSessionDuration: 3600
+      Policies:
+        - PolicyName: ComplianceReadOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadOnlyEvaluation
+                Effect: Allow
+                Action:
+                  - s3:GetBucket*
+                  - s3:ListBucket*
+                  - s3:ListAllMyBuckets
+                  - s3:GetEncryptionConfiguration
+                  - s3:GetBucketPolicyStatus
+                  - s3:GetBucketPublicAccessBlock
+                  - iam:Get*
+                  - iam:List*
+                  - iam:GenerateCredentialReport
+                  - ec2:Describe*
+                  - rds:Describe*
+                  - cloudtrail:Describe*
+                  - cloudtrail:GetTrailStatus
+                  - cloudtrail:GetEventSelectors
+                  - kms:List*
+                  - kms:Describe*
+                  - kms:GetKeyRotationStatus
+                  - config:Describe*
+                  - config:Get*
+                  - securityhub:Get*
+                  - securityhub:List*
+                  - sts:GetCallerIdentity
+                  - cloudwatch:Describe*
+                  - cloudwatch:Get*
+                  - cloudwatch:List*
+                Resource: "*"
+        - PolicyName: ComplianceScopedRemediation
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ScopedRemediationActions
+                Effect: Allow
+                Action:
+                  - s3:PutPublicAccessBlock
+                  - s3:PutBucketEncryption
+                  - s3:PutBucketVersioning
+                  - ec2:ModifyInstanceMetadataOptions
+                  - ec2:RevokeSecurityGroupIngress
+                  - kms:EnableKeyRotation
+                  - cloudtrail:StartLogging
+                  - cloudtrail:UpdateTrail
+                  - rds:ModifyDBInstance
+                  - iam:UpdateAccountPasswordPolicy
+                Resource: "*"
+      Tags:
+        - Key: Purpose
+          Value: AgenticComplianceScanning
+        - Key: ManagedBy
+          Value: ComplianceAgentCloudFormation
+
+Outputs:
+  RoleArn:
+    Description: ARN to reference from the hub account's AWS_TARGET_ACCOUNTS config
+    Value: !GetAtt ComplianceAgentRole.Arn

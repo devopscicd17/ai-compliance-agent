@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "name": "Organization Custom Policies",
+  "policies": [
+    {
+      "id": "CUSTOM-001",
+      "name": "Require resource tagging",
+      "description": "All EC2, RDS, and S3 resources must have Environment, Owner, and CostCenter tags",
+      "service": "TAGGING",
+      "severity": "MEDIUM",
+      "requiredTags": ["Environment", "Owner", "CostCenter"],
+      "resourceTypes": ["ec2:instance", "rds:db", "s3:bucket"]
+    },
+    {
+      "id": "CUSTOM-002",
+      "name": "Approved AMI list",
+      "description": "EC2 instances must use AMIs from the approved list",
+      "service": "EC2",
+      "severity": "HIGH",
+      "approvedAmiPrefixes": ["ami-approved-", "ami-hardened-"],
+      "resourceTypes": ["ec2:instance"]
+    },
+    {
+      "id": "CUSTOM-003",
+      "name": "S3 bucket naming convention",
+      "description": "S3 buckets must follow naming convention: <env>-<team>-<purpose>",
+      "service": "S3",
+      "severity": "LOW",
+      "namingPattern": "^(prod|staging|dev)-[a-z]+-[a-z]+(-[a-z]+)*$",
+      "resourceTypes": ["s3:bucket"]
+    }
+  ]
+}

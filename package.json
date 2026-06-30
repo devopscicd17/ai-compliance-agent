@@ -1,0 +1,36 @@
+{
+  "name": "aws-compliance-agent",
+  "version": "1.0.0",
+  "description": "Agentic AWS Compliance Agent - FedRAMP, CIS, NIST 800-53, PCI DSS",
+  "main": "src/agent.js",
+  "scripts": {
+    "start": "node src/agent.js",
+    "scan": "node src/agent.js --mode=scan",
+    "report": "node src/agent.js --mode=report",
+    "watch": "node src/agent.js --mode=watch",
+    "test": "node src/agent.js --mode=test --dry-run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-iam": "^3.600.0",
+    "@aws-sdk/client-ec2": "^3.600.0",
+    "@aws-sdk/client-rds": "^3.600.0",
+    "@aws-sdk/client-cloudtrail": "^3.600.0",
+    "@aws-sdk/client-config-service": "^3.600.0",
+    "@aws-sdk/client-securityhub": "^3.600.0",
+    "@aws-sdk/client-sts": "^3.600.0",
+    "@aws-sdk/client-kms": "^3.600.0",
+    "@aws-sdk/client-cloudwatch": "^3.600.0",
+    "@aws-sdk/client-lambda": "^3.600.0",
+    "@aws-sdk/client-sns": "^3.600.0",
+    "@anthropic-ai/sdk": "^0.24.0",
+    "pdfkit": "^0.15.0",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "table": "^6.8.2",
+    "ora": "^5.4.1",
+    "date-fns": "^3.6.0",
+    "lodash": "^4.17.21"
+  }
+}

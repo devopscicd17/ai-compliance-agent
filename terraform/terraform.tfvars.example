@@ -1,0 +1,10 @@
+aws_region             = "us-east-1"
+project_name           = "aws-compliance-agent"
+anthropic_api_key      = "sk-ant-xxxxxxxxxxxxxxxxxxxxx"
+active_frameworks      = "FEDRAMP,CIS,NIST"
+remediation_mode       = "DRY_RUN"
+scan_interval_minutes  = 60
+vpc_id                 = "vpc-0123456789abcdef0"
+subnet_ids             = ["subnet-aaa111", "subnet-bbb222"]
+slack_webhook_url      = ""
+target_account_ids     = ""

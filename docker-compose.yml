@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  compliance-agent:
+    build: .
+    image: aws-compliance-agent:latest
+    container_name: aws-compliance-agent
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_TARGET_ACCOUNTS=${AWS_TARGET_ACCOUNTS:-}
+      - AWS_ASSUME_ROLE_NAME=${AWS_ASSUME_ROLE_NAME:-ComplianceAgentRole}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ACTIVE_FRAMEWORKS=${ACTIVE_FRAMEWORKS:-FEDRAMP,CIS,NIST}
+      - AUTO_REMEDIATE_THRESHOLD=${AUTO_REMEDIATE_THRESHOLD:-CRITICAL}
+      - REMEDIATION_MODE=${REMEDIATION_MODE:-DRY_RUN}
+      - SCAN_INTERVAL_MINUTES=${SCAN_INTERVAL_MINUTES:-60}
+      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - ENABLE_HTTP_SERVER=true
+      - PORT=8080
+    volumes:
+      - ./reports:/app/reports
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

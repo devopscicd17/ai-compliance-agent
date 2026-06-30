@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+!.env.example
+reports/*
+!reports/.gitkeep
+.git
+.gitignore
+*.md
+.DS_Store
+terraform/.terraform
+terraform/*.tfstate*
+k8s/*.local.yaml

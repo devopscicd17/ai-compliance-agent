@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-compliance-agent
+  namespace: security
+  labels:
+    app: aws-compliance-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # single agent instance — avoid duplicate scans/alerts
+  selector:
+    matchLabels:
+      app: aws-compliance-agent
+  template:
+    metadata:
+      labels:
+        app: aws-compliance-agent
+    spec:
+      serviceAccountName: compliance-agent-sa
+      containers:
+        - name: compliance-agent
+          image: ghcr.io/your-org/aws-compliance-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: compliance-agent-config
+            - secretRef:
+                name: compliance-agent-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: reports
+              mountPath: /app/reports
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: reports
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aws-compliance-agent-svc
+  namespace: security
+spec:
+  selector:
+    app: aws-compliance-agent
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: compliance-agent-config
+  namespace: security
+data:
+  AWS_REGION: "us-east-1"
+  ACTIVE_FRAMEWORKS: "FEDRAMP,CIS,NIST"
+  AUTO_REMEDIATE_THRESHOLD: "CRITICAL"
+  REMEDIATION_MODE: "DRY_RUN"
+  SCAN_INTERVAL_MINUTES: "60"
+  ENABLE_HTTP_SERVER: "true"
+  PORT: "8080"
+  REPORT_OUTPUT_DIR: "/app/reports"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: compliance-agent-secrets
+  namespace: security
+type: Opaque
+stringData:
+  ANTHROPIC_API_KEY: "REPLACE_ME"
+  # If not using IRSA/Workload Identity for AWS auth, set these (not recommended):
+  # AWS_ACCESS_KEY_ID: ""
+  # AWS_SECRET_ACCESS_KEY: ""
+  SLACK_WEBHOOK_URL: ""
+  SNS_TOPIC_ARN: ""
+---
+# ServiceAccount with IRSA annotation (AWS EKS).
+# For GKE use Workload Identity annotation instead; for AKS use Azure AD Workload Identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: compliance-agent-sa
+  namespace: security
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/ComplianceAgentEKSRole"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aws-compliance-agent-ingress
+  namespace: security
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+    - host: compliance.internal.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aws-compliance-agent-svc
+                port:
+                  number: 80
