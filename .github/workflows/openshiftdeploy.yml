@@ -1,0 +1,112 @@
+name: Build & Deploy to OpenShift
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  APP_NAME: ai-compliance-agent
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Generate Image Name
+        run: |
+          IMAGE_NAME=ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t $IMAGE_NAME:${{ github.sha }} \
+            -t $IMAGE_NAME:latest .
+
+      - name: Push Docker Images
+        run: |
+          docker push $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:latest
+
+      - name: Install OpenShift CLI
+        uses: redhat-actions/oc-installer@v1
+
+      - name: Login to OpenShift
+        run: |
+          oc login \
+            --server=${{ secrets.OPENSHIFT_SERVER }} \
+            --token=${{ secrets.OPENSHIFT_TOKEN }}
+
+      - name: Select Namespace
+        run: |
+          oc project ${{ secrets.OPENSHIFT_PROJECT }}
+
+      - name: Check if App Exists
+        id: app
+        run: |
+          if oc get deployment $APP_NAME >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      ####################################################
+      # First deployment
+      ####################################################
+
+      - name: Create Application
+        if: steps.app.outputs.exists == 'false'
+        run: |
+
+          oc new-app $IMAGE_NAME:latest \
+            --name=$APP_NAME
+
+          oc expose service/$APP_NAME || true
+
+      ####################################################
+      # Existing deployment
+      ####################################################
+
+      - name: Update Deployment Image
+        if: steps.app.outputs.exists == 'true'
+        run: |
+
+          CONTAINER=$(oc get deployment $APP_NAME \
+            -o jsonpath='{.spec.template.spec.containers[0].name}')
+
+          oc set image deployment/$APP_NAME \
+            $CONTAINER=$IMAGE_NAME:${{ github.sha }}
+
+      - name: Wait for Rollout
+        run: |
+          oc rollout status deployment/$APP_NAME --timeout=5m
+
+      - name: Show Resources
+        run: |
+          oc get all
+
+      - name: Print Route
+        run: |
+          echo ""
+          echo "Application URL:"
+          echo "-------------------------------------"
+
+          oc get route $APP_NAME \
+            -o jsonpath='https://{.spec.host}'
+
+          echo ""
