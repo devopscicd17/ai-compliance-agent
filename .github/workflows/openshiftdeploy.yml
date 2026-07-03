@@ -1,4 +1,4 @@
-name: Build & Deploy to OpenShift
+name: Build and Deploy to OpenShift
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      - name: Generate Image Name
+      - name: Set Image Name
         run: |
           IMAGE_NAME=ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
@@ -38,7 +38,7 @@ jobs:
             -t $IMAGE_NAME:${{ github.sha }} \
             -t $IMAGE_NAME:latest .
 
-      - name: Push Docker Images
+      - name: Push Docker Image
         run: |
           docker push $IMAGE_NAME:${{ github.sha }}
           docker push $IMAGE_NAME:latest
@@ -52,12 +52,12 @@ jobs:
             --server=${{ secrets.OPENSHIFT_SERVER }} \
             --token=${{ secrets.OPENSHIFT_TOKEN }}
 
-      - name: Select Namespace
+      - name: Select Project
         run: |
           oc project ${{ secrets.OPENSHIFT_PROJECT }}
 
-      - name: Check if App Exists
-        id: app
+      - name: Check if Deployment Exists
+        id: check
         run: |
           if oc get deployment $APP_NAME >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -65,48 +65,94 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      ####################################################
+      #################################################################
       # First deployment
-      ####################################################
+      #################################################################
 
       - name: Create Application
-        if: steps.app.outputs.exists == 'false'
+        if: steps.check.outputs.exists == 'false'
         run: |
-
-          oc new-app $IMAGE_NAME:latest \
-            --name=$APP_NAME
+          oc new-app $IMAGE_NAME:latest --name=$APP_NAME
 
           oc expose service/$APP_NAME || true
 
-      ####################################################
+      #################################################################
       # Existing deployment
-      ####################################################
+      #################################################################
 
-      - name: Update Deployment Image
-        if: steps.app.outputs.exists == 'true'
+      - name: Update Image
+        if: steps.check.outputs.exists == 'true'
         run: |
-
           CONTAINER=$(oc get deployment $APP_NAME \
             -o jsonpath='{.spec.template.spec.containers[0].name}')
+
+          echo "Container = $CONTAINER"
 
           oc set image deployment/$APP_NAME \
             $CONTAINER=$IMAGE_NAME:${{ github.sha }}
 
+      #################################################################
+      # Wait until rollout completes
+      #################################################################
+
       - name: Wait for Rollout
         run: |
-          oc rollout status deployment/$APP_NAME --timeout=5m
+          if ! oc rollout status deployment/$APP_NAME --timeout=300s; then
+            echo "Rollout failed."
+            oc rollout undo deployment/$APP_NAME || true
+            exit 1
+          fi
 
-      - name: Show Resources
-        run: |
-          oc get all
+      #################################################################
+      # Verify deployment
+      #################################################################
 
-      - name: Print Route
+      - name: Verify Resources
         run: |
+          echo "Deployments"
+          oc get deployment
+
+          echo ""
+          echo "Pods"
+          oc get pods
+
+          echo ""
+          echo "Services"
+          oc get svc
+
+          echo ""
+          echo "Routes"
+          oc get route
+
+      #################################################################
+      # Print application URL
+      #################################################################
+
+      - name: Print Application URL
+        run: |
+          ROUTE=$(oc get route $APP_NAME -o jsonpath='{.spec.host}')
+
+          echo ""
+          echo "==========================================="
+          echo "Deployment Successful!"
           echo ""
           echo "Application URL:"
-          echo "-------------------------------------"
+          echo "https://$ROUTE"
+          echo "==========================================="
 
-          oc get route $APP_NAME \
-            -o jsonpath='https://{.spec.host}'
+      #################################################################
+      # Deployment summary
+      #################################################################
 
-          echo ""
+      - name: GitHub Summary
+        run: |
+          {
+            echo "## OpenShift Deployment"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Application | $APP_NAME |"
+            echo "| Image | $IMAGE_NAME:${{ github.sha }} |"
+            echo "| Commit | ${{ github.sha }} |"
+            echo "| URL | https://$(oc get route $APP_NAME -o jsonpath='{.spec.host}') |"
+          } >> $GITHUB_STEP_SUMMARY
